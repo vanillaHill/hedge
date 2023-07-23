@@ -11,13 +11,13 @@ Let's consider a trader who holds a significant amount of ETH and is concerned a
 
 The trader can implement a simple hedging mechanism using Uniswap hooks as follows:
 
-** Create a Hedge Contract:** The trader deploys a smart contract that interacts with Uniswap and holds a certain amount of ETH and a stablecoin (e.g., DAI).
+**Create a Hedge Contract:** The trader deploys a smart contract that interacts with Uniswap and holds a certain amount of ETH and a stablecoin (e.g., DAI).
 
-** Dynamic Swaps:** The hedging contract uses hooks to monitor the price of ETH. When the price of ETH decreases beyond a certain threshold, the hook automatically initiates a swap of a portion of the ETH holdings into DAI.
+**Dynamic Swaps:** The hedging contract uses hooks to monitor the price of ETH. When the price of ETH decreases beyond a certain threshold, the hook automatically initiates a swap of a portion of the ETH holdings into DAI.
 
-** Protecting Against Losses:** By swapping ETH for DAI when the price is high, the trader locks in a certain amount of value in stablecoin form, effectively hedging against potential losses. If the price of ETH declines, the value of the DAI holdings will increase, partially offsetting the loss in ETH value.
+**Protecting Against Losses:** By swapping ETH for DAI when the price is high, the trader locks in a certain amount of value in stablecoin form, effectively hedging against potential losses. If the price of ETH declines, the value of the DAI holdings will increase, partially offsetting the loss in ETH value.
 
-** Optional Unwinding:** The trader can also set a condition to unwind the hedge when the price of ETH starts to recover. In this case, the hook will swap DAI back into ETH, allowing the trader to benefit from the ETH price appreciation.
+**Optional Unwinding:** The trader can also set a condition to unwind the hedge when the price of ETH starts to recover. In this case, the hook will swap DAI back into ETH, allowing the trader to benefit from the ETH price appreciation.
 
 ## Further Exploration
 This README provides a brief overview of how hedging mechanisms can be implemented in DeFi using Uniswap hooks. For more detailed information and code examples, please refer to the accompanying documentation and smart contract code.
