@@ -5,4 +5,7 @@ libs = ["lib"]
 ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
 
+[rpc_endpoints]
+mainnet = "http://127.0.0.1:8545"
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
