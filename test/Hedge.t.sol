@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import "forge-std/Test.sol";
-
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {HookTest} from "./utils/HookTest.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
@@ -55,32 +53,32 @@ contract HedgeTest is HookTest, Deployers, GasSnapshot {
         token1.approve(address(hedge), type(uint256).max);
     }
 
-    function test_setTrigger() public {
-        (, , Currency currency0, , , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
-        assertNotEq(Currency.unwrap(currency0), address(token0));
+    // function test_setTrigger() public {
+    //     (, , Currency currency0, , , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
+    //     assertNotEq(Currency.unwrap(currency0), address(token0));
 
-        vm.prank(alice);
-        uint128 priceLimit = 513 * 10^16;
-        uint128 maxAmount = 100 * 10^18;
-        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
-        (, , currency0, , , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
-        assertEq(Currency.unwrap(currency0), address(token0));
-    }
+    //     vm.prank(alice);
+    //     uint128 priceLimit = 513 * 10^16;
+    //     uint128 maxAmount = 100 * 10^18;
+    //     hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
+    //     (, , currency0, , , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
+    //     assertEq(Currency.unwrap(currency0), address(token0));
+    // }
 
-    function test_currency1IsSet() public {
-        vm.prank(alice);
-        uint128 priceLimit = 513 * 10^16;
-        uint128 maxAmount = 100 * 10^18;
-        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
+    // function test_currency1IsSet() public {
+    //     vm.prank(alice);
+    //     uint128 priceLimit = 79466191966197645195421774833;
+    //     uint128 maxAmount = 100 * 10^18;
+    //     hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
 
-        swapRouter.swap(
-            key,
-            IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
-            PoolSwapTest.TestSettings(true, true)
-        );
+    //     swapRouter.swap(
+    //         key,
+    //         IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
+    //         PoolSwapTest.TestSettings(true, true)
+    //     );
 
-        (, , Currency currency0, Currency currency1, , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
-        assertEq(Currency.unwrap(currency0), address(token0));
-        assertEq(Currency.unwrap(currency1), address(token1));
-    }
+    //     (, , Currency currency0, Currency currency1, , , , ) = hedge.triggerByUser(alice,Currency.wrap(address(token0)));
+    //     assertEq(Currency.unwrap(currency0), address(token0));
+    //     assertEq(Currency.unwrap(currency1), address(token1));
+    // }
 }

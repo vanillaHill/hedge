@@ -12,6 +12,8 @@ docs/
 
 # Dotenv file
 .env
+# Mac file
+.DS_Store
 
 # lib
-lib/*/*
+lib/
