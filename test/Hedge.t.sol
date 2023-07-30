@@ -28,6 +28,7 @@ contract HedgeTest is HookTest, Deployers, GasSnapshot {
 
     uint256 internal mintAmount = 12e18;
     address internal alice = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
+    address internal thomas = address(0x14dC79964da2C08b23698B3D3cc7Ca32193d9955);
 
     function setUp() public {   
         // creates the pool manager, test tokens, and other utility routers
@@ -57,17 +58,31 @@ contract HedgeTest is HookTest, Deployers, GasSnapshot {
 
     function test_setTrigger() public {
         vm.prank(alice);
-        uint128 priceLimit = 513 * 10^16;
-        uint128 maxAmount = 100 * 10^18;
-        //(,,Currency currency0,,,,,,address owner) = hedge.triggersByCurrency(Currency.wrap(address(token0)), priceLimit, 0);
-        //assertNotEq(Currency.unwrap(currency0), address(token0));
-
+        uint128 priceLimit = 513 * 10**16;
+        uint128 maxAmount = 100 * 10**18;
         hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
         (,,Currency currency0,,uint256 minPriceLimit,,,uint256 maxAmountSwap,address owner) = hedge.triggersByCurrency(Currency.wrap(address(token0)), priceLimit, 0);
         assertEq(Currency.unwrap(currency0), address(token0));
         assertEq(owner, alice);
         assertEq(minPriceLimit, priceLimit);
         assertEq(maxAmountSwap, maxAmount);
+
+        vm.prank(thomas);
+        uint128 priceLimitThomas = 413 * 10**16;
+        uint128 maxAmountThomas = 90 * 10**18;
+        hedge.setTrigger(Currency.wrap(address(token1)), priceLimitThomas, maxAmountThomas, true);
+        (,,currency0,,minPriceLimit,,,maxAmountSwap,owner) = hedge.triggersByCurrency(Currency.wrap(address(token0)), priceLimit, 0);
+        assertEq(Currency.unwrap(currency0), address(token0));
+        assertEq(owner, alice);
+        assertEq(minPriceLimit, priceLimit);
+        assertEq(maxAmountSwap, maxAmount);
+
+        //
+        (,,currency0,,minPriceLimit,,,maxAmountSwap,owner) = hedge.triggersByCurrency(Currency.wrap(address(token1)), priceLimitThomas, 0);
+        assertEq(Currency.unwrap(currency0), address(token1));
+        assertEq(owner, thomas);
+        assertEq(minPriceLimit, priceLimitThomas);
+        assertEq(maxAmountSwap, maxAmountThomas);
     }
 
     // function test_currency1IsSet() public {
