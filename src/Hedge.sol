@@ -13,123 +13,131 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 
 struct Trigger {
-    /// @notice/ @notice needed to delete a "Trigger"
-    uint triggerListPointer; 
-    /// @notice trigger has exactly one "User"
-    address user; 
-
-    /// @notice/ @notice unwind the hedge when the price of ETH starts to recover
+    /// @notice unwind the hedge when the price of ETH starts to recover
     bool unwind;
-    /// @notice/ @notice fired, indicated if swap was initiated
+    /// @notice fired, indicated if swap was initiated
     bool fired;
-    /// @notice/ @notice the pool primary currency 
+    /// @notice the pool primary currency 
     Currency currency0;
-    /// @notice/ @notice the pool second currency 
+    /// @notice the pool second currency 
     Currency currency1;
-    /// @notice/ @notice When the price decreases beyond a certain this threshold, we initiate the swap
+    /// @notice When the price decreases beyond a certain this threshold, we initiate the swap
     uint256 minPriceLimit;
-    /// @notice/ @notice unwind price
+    /// @notice unwind price
     uint256 unwindPrice;
-    /// @notice/ @notice unwind amount
+    /// @notice unwind amount
     uint256 unwindAmount;
-    /// @notice/ @notice max amount to swap
+    /// @notice max amount to swap
     uint256 maxAmountSwap;
-}
-
-struct CurrencyItem {
-    /// @notice needed to delete a "Currency"
-    uint currencyListPointer; 
-    /// @notice Currency has many "Price"
-    uint256[] prices; 
-    mapping(uint256 => uint) pricePointers;  
-}
-
-struct PriceItem {
-    /// @notice needed to delete a "Price"
-    uint priceListPointer; 
-    /// @notice price has exactly one "Currency"
-    Currency currency; 
-    /// @notice price has many "User"
-    address[] users; 
-    mapping(address => uint) userPointers;  
-}
-
-struct UserItem {
-    /// @notice needed to delete a "User"
-    uint userListPointer; 
-    /// @notice user has exactly one "price"
-    uint256 price; 
-    /// @notice user has many "Trigger"
-    bytes32[] triggers; 
-    mapping(bytes32 => uint) triggerPointers;  
+    /// @notice owner
+    address owner;
 }
 
 contract Hedge is BaseHook {
     using PoolId for IPoolManager.PoolKey;
     using SafeERC20 for IERC20;
 
-    mapping(Currency => CurrencyItem) public currencyCollections;
-    Currency[] public currencyList;
-    mapping(uint256 => PriceItem) public priceCollections;
-    uint256[] public priceList;
-    mapping(address => UserItem) public userCollections;
-    address[] public userList;
-    mapping(bytes32 => Trigger) public triggerCollections;
-    bytes32[] public triggerList;
+    mapping(Currency => uint256[]) public orderedPriceByCurrency;   
+    mapping(Currency => mapping(uint256 => Trigger[])) public triggersByCurrency;
 
     event NewCurrencyAdded(address sender, Currency currency);
     event NewPriceAdded(address sender, Currency currency, uint256 price);
     event NewUserAdded(address sender, Currency currency, uint256 price, address user);
     event NewTriggerAdded(address sender, Currency currency, uint256 price, address user, bytes32 trigger);
 
-    function isCurrencyExists(Currency currencyAddress) public returns(bool isIndeed) {
-        if(currencyList.length == 0) return false;
-        return Currency.unwrap(currencyList[currencyCollections[currencyAddress].currencyListPointer]) == Currency.unwrap(currencyAddress);
+    /// @notice binarysearch method to find the index where I have to insert my new trigger
+    function _findIndex(uint256[] memory prices, uint256 targetPrice) internal pure returns (uint256) {
+        if (prices.length == 0) {
+            return 0;
+        }
+
+        uint256 left = 0;
+        uint256 right = prices.length - 1;
+
+        while (left <= right) {
+            uint256 mid = (left + right) / 2;
+            uint256 midPrice = prices[mid];
+
+            if (midPrice == targetPrice) {
+                return mid;
+            } else if (midPrice < targetPrice) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+
+        return left;
     }
-    
-    function isPriceExists(uint256 price) public returns(bool isIndeed) {
-        if(priceList.length == 0) return false;
-        return priceList[priceCollections[price].priceListPointer] == price;
+
+    function _performHedge(
+        IPoolManager.PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        Trigger[] memory triggers,
+        uint256 currency0Price) internal {
+        for (uint256 j = 0; j < triggers.length; j++) {
+            Trigger memory trigger = triggers[j];
+            if(trigger.fired){
+                continue;
+            }
+            uint256 amount1 = abi.decode(
+                poolManager.lock(
+                    abi.encodeCall(this.lockAcquiredHedge, (key, params, trigger))
+                ),
+                (uint256)
+            );
+            trigger.fired = true; 
+            trigger.currency1 = key.currency1;
+
+            if(trigger.unwind){
+                trigger.unwindPrice = currency0Price;
+                trigger.unwindAmount = amount1;
+            }
+        }
     }
-    
-    function isUserExists(address user) public returns(bool isIndeed) {
-        if(userList.length == 0) return false;
-        return userList[userCollections[user].userListPointer] == user;
-    }
-    
-    function isTriggerExists(bytes32 trigger) public returns(bool isIndeed) {
-        if(triggerList.length == 0) return false;
-        return triggerList[triggerCollections[trigger].triggerListPointer] == trigger;
+
+    function _performUnwind(
+        IPoolManager.PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        Trigger[] memory triggers,
+        uint256 currency0Price) internal {
+        for (uint256 j = 0; j < triggers.length; j++) {
+            Trigger memory trigger = triggers[j];
+            if(!trigger.fired){
+                continue;
+            }
+            if(currency0Price > trigger.unwindPrice && trigger.unwind){
+                poolManager.lock(
+                    abi.encodeCall(this.lockAcquiredUnwind, (key, params, trigger))
+                );
+            }
+            trigger.fired = false;
+            trigger.currency1 = Currency.wrap(address(0));
+        }
     }
 
     function setTrigger(Currency _tokenAddress, uint256 _priceLimit, uint256 _maxAmountSwap, bool _unwind) external {
-        if(!isCurrencyExists(_tokenAddress)){
-            currencyCollections[_tokenAddress].currencyListPointer = currencyList.push(_tokenAddress)-1;
-            NewCurrencyAdded(msg.sender, _tokenAddress);
+        Trigger memory trigger;
+        trigger.unwind = _unwind;
+        trigger.currency0 = _tokenAddress;
+        trigger.minPriceLimit = _priceLimit;
+        trigger.maxAmountSwap = _maxAmountSwap;
+        trigger.owner = msg.sender;
+
+        uint256[] storage prices = orderedPriceByCurrency[_tokenAddress];
+        // Update the trigger arrays
+        uint256 insertIndex = _findIndex(prices, _priceLimit);
+        prices.push(0);
+
+        // Shift prices to make space for the new price at the correct position
+        for (uint256 i = prices.length - 1; i > insertIndex; i--) {
+            prices[i] = prices[i - 1];
         }
-        if(!isPriceExists(_priceLimit)){
-            priceCollections[_priceLimit].priceListPointer = priceList.push(_priceLimit)-1;
-            priceCollections[_priceLimit].currency = _tokenAddress;
-            currencyCollections[_tokenAddress].pricePointers[_priceLimit] = currencyCollections[_tokenAddress].prices.push(_priceLimit)-1;
-            NewPriceAdded(msg.sender, _tokenAddress, _priceLimit);
-        }
-        if(!isUserExists(msg.sender)){
-            userCollections[msg.sender].userListPointer = userList.push(msg.sender)-1;
-            userCollections[msg.sender].price = _priceLimit;
-            currencyCollections[_tokenAddress].pricePointers[_priceLimit].userPointers[msg.sender] = currencyCollections[_tokenAddress].pricePointers[_priceLimit].users.push(msg.sender)-1;
-            NewUserAdded(msg.sender, _tokenAddress, _priceLimit, msg.sender);
-        }
-        if(!isTriggerExists(keccak256(abi.encodePacked(_tokenAddress, _priceLimit, msg.sender)))){
-            bytes32 triggerKey = keccak256(abi.encodePacked(_tokenAddress, _priceLimit, msg.sender));
-            triggerCollections[triggerKey].triggerListPointer = triggerList.push(triggerKey)-1;
-            triggerCollections[triggerKey].user = msg.sender;
-            triggerCollections[triggerKey].unwind = _unwind;
-            triggerCollections[triggerKey].minPriceLimit = _priceLimit;
-            triggerCollections[triggerKey].maxAmountSwap = _maxAmountSwap;
-            triggerCollections[triggerKey].currency0 = _tokenAddress;
-            currencyCollections[_tokenAddress].pricePointers[_priceLimit].userPointers[msg.sender].triggerPointers[triggerKey] = currencyCollections[_tokenAddress].pricePointers[_priceLimit].userPointers[msg.sender].triggers.push(triggerKey)-1;
-            NewTriggerAdded(msg.sender, _tokenAddress, _priceLimit, msg.sender, triggerKey);
-        }
+
+        // Insert the new price at the correct position
+        prices[insertIndex] = _priceLimit;
+
+        triggersByCurrency[_tokenAddress][_priceLimit].push(trigger);
     }
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
@@ -153,55 +161,43 @@ contract Hedge is BaseHook {
         IPoolManager.SwapParams calldata params,
         BalanceDelta
     ) external override poolManagerOnly returns (bytes4) {
-        // Trigger memory trigger = triggerByCurrency[msg.sender][key.currency0];
-        // console.log(Currency.unwrap(trigger.currency0), ">>>>");
-        // console.log(Currency.unwrap(key.currency0), "<<<<");
-        // if(Currency.unwrap(trigger.currency0) != Currency.unwrap(key.currency0)) return Hedge.afterSwap.selector;
+        uint256[] memory prices = orderedPriceByCurrency[key.currency0];
+        if(prices.length == 0) return Hedge.afterSwap.selector;
 
-        // uint256 numerator1 = uint256(params.sqrtPriceLimitX96) * uint256(params.sqrtPriceLimitX96);
-        // uint256 numerator2 = 10**18;
-        // uint256 price = FullMath.mulDiv(numerator1, numerator2, 1 << 192); 
+        uint256 numerator1 = uint256(params.sqrtPriceLimitX96) * uint256(params.sqrtPriceLimitX96);
+        uint256 numerator2 = 10**18;
+        uint256 currency0Price = FullMath.mulDiv(numerator1, numerator2, 1 << 192); 
 
-        // if(price <= trigger.minPriceLimit && !trigger.fired){
-        //     uint256 amount1 = abi.decode(
-        //         poolManager.lock(
-        //             abi.encodeCall(this.lockAcquiredHedge, (key, params, trigger, msg.sender))
-        //         ),
-        //         (uint256)
-        //     );
-        //     trigger.fired = true; 
-        //     trigger.currency1 = key.currency1;
+        uint256 startIndex = _findIndex(prices, currency0Price);
 
-        //     if(trigger.unwind){
-        //         trigger.unwindPrice = price;
-        //         trigger.unwindAmount = amount1;
-        //     }
-        // }
-        // else {
-        //     if(price > trigger.unwindPrice && trigger.unwind && trigger.fired){
-        //         poolManager.lock(
-        //             abi.encodeCall(this.lockAcquiredUnwind, (key, params, trigger, msg.sender))
-        //         );
-        //     }
-        //     trigger.fired = false;
-        //     trigger.currency1 = Currency.wrap(address(0));
-        // } 
+        // Collect the triggers with prices greater than or equal to the target price
+        for (uint256 i = 0; i < prices.length; i++) {
+            Trigger[] memory triggers = triggersByCurrency[key.currency0][prices[i]];
+            if(triggers.length != 0){
+                // all prices greater or equal to currency0Price
+                if(i >= startIndex){
+                    _performHedge(key, params, triggers, currency0Price);
+                }
+                else {
+                    _performUnwind(key, params, triggers, currency0Price);
+                }
+            }                
+        }
 
         return Hedge.afterSwap.selector;
     }
 
     function lockAcquiredUnwind(IPoolManager.PoolKey calldata key, 
         IPoolManager.SwapParams calldata params, 
-        Trigger memory trigger, 
-        address owner)
+        Trigger memory trigger)
         external
         selfOnly
     {
         IERC20 token = IERC20(Currency.unwrap(trigger.currency1));
-        uint256 balance = token.balanceOf(msg.sender);
+        uint256 balance = token.balanceOf(trigger.owner);
         if(balance >= trigger.unwindAmount){
             token.transferFrom(
-                owner, address(poolManager), trigger.unwindAmount
+                trigger.owner, address(poolManager), trigger.unwindAmount
             );
             poolManager.settle(trigger.currency1);
             BalanceDelta delta = poolManager.swap(key, params);
@@ -210,24 +206,23 @@ contract Hedge is BaseHook {
             poolManager.safeTransferFrom(
                 address(this), address(poolManager), uint256(uint160(Currency.unwrap(trigger.currency0))), token0Amount, ""
             );
-            poolManager.take(trigger.currency0, owner, token0Amount);
+            poolManager.take(trigger.currency0, trigger.owner, token0Amount);
         }
     }
 
     function lockAcquiredHedge(IPoolManager.PoolKey calldata key, 
         IPoolManager.SwapParams calldata params,
-        Trigger memory trigger, 
-        address owner)
+        Trigger memory trigger)
         external
         selfOnly
         returns (uint256 token1Amount)
     {
         IERC20 token = IERC20(Currency.unwrap(trigger.currency0));
-        uint256 balance = token.balanceOf(msg.sender);
+        uint256 balance = token.balanceOf(trigger.owner);
         if(balance >= trigger.maxAmountSwap){
             /// @notice TODO use safeTransferFrom
             token.transferFrom(
-                owner, address(poolManager), trigger.maxAmountSwap
+                trigger.owner, address(poolManager), trigger.maxAmountSwap
             );
             poolManager.settle(trigger.currency0);
             BalanceDelta delta = poolManager.swap(key, params);
@@ -236,7 +231,7 @@ contract Hedge is BaseHook {
             poolManager.safeTransferFrom(
                 address(this), address(poolManager), uint256(uint160(Currency.unwrap(trigger.currency1))), token1Amount, ""
             );
-            poolManager.take(trigger.currency1, owner, token1Amount);
+            poolManager.take(trigger.currency1, trigger.owner, token1Amount);
         }
     }
 }
