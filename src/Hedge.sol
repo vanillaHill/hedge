@@ -47,12 +47,19 @@ contract Hedge is BaseHook {
 
     /// @notice binarysearch method to find the index where I have to insert my new trigger
     function _findIndex(uint256[] memory prices, uint256 targetPrice) internal pure returns (uint256) {
-        if (prices.length == 0) {
+        uint256 length = prices.length;
+        // Handle the case when the array is empty or the target price is smaller than the first element
+        if (length == 0 || targetPrice <= prices[0]) {
             return 0;
         }
 
+        // Handle the case when the target price is greater than or equal to the last element
+        if (targetPrice >= prices[length - 1]) {
+            return length;
+        }
+
         uint256 left = 0;
-        uint256 right = prices.length - 1;
+        uint256 right = length - 1;
 
         while (left <= right) {
             uint256 mid = (left + right) / 2;

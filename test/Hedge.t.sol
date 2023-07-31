@@ -2,6 +2,7 @@
 pragma solidity ^0.8.15;
 
 import "forge-std/Test.sol";
+import "forge-std/console.sol";
 
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {HookTest} from "./utils/HookTest.sol";
@@ -83,6 +84,51 @@ contract HedgeTest is HookTest, Deployers, GasSnapshot {
         assertEq(owner, thomas);
         assertEq(minPriceLimit, priceLimitThomas);
         assertEq(maxAmountSwap, maxAmountThomas);
+    }
+
+    function test_orderedPriceByCurrency_setTrigger() public {
+        vm.prank(alice);
+        uint128 priceLimit = 613 * 10**16;
+        uint128 priceLimit1 = 513 * 10**16;
+        uint128 priceLimit2 = 713 * 10**16;
+        uint128 priceLimit3 = 913 * 10**16;
+        uint128 priceLimit4 = 413 * 10**16;
+        uint128 priceLimit5 = 813 * 10**16;
+        uint128 maxAmount = 100 * 10**18;
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit, maxAmount, true);
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit1, maxAmount, true);
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit2, maxAmount, true); 
+
+        uint256 savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 0);
+        assertEq(savedPrice, priceLimit1);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 1);
+        assertEq(savedPrice, priceLimit);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 2);
+        assertEq(savedPrice, priceLimit2);
+
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit3, maxAmount, true);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 3);
+        assertEq(savedPrice, priceLimit3);
+
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit4, maxAmount, true); 
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 0);
+        assertEq(savedPrice, priceLimit4);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 1);
+        assertEq(savedPrice, priceLimit1);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 2);
+        assertEq(savedPrice, priceLimit);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 3);
+        assertEq(savedPrice, priceLimit2);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 4);
+        assertEq(savedPrice, priceLimit3);
+
+        hedge.setTrigger(Currency.wrap(address(token0)), priceLimit5, maxAmount, true); 
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 3);
+        assertEq(savedPrice, priceLimit2);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 4);
+        assertEq(savedPrice, priceLimit5);
+        savedPrice = hedge.orderedPriceByCurrency(Currency.wrap(address(token0)), 5);
+        assertEq(savedPrice, priceLimit3);
     }
 
     // function test_currency1IsSet() public {
