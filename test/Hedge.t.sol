@@ -86,7 +86,7 @@ contract HedgeTest is HookTest, Deployers, GasSnapshot {
         assertEq(maxAmountSwap, maxAmountThomas);
     }
 
-    function test_orderedPriceByCurrency_setTrigger() public {
+    function test_orderedPriceByCurrency() public {
         vm.prank(alice);
         uint128 priceLimit = 613 * 10**16;
         uint128 priceLimit1 = 513 * 10**16;
